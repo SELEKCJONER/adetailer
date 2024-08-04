@@ -1,40 +1,24 @@
 from __future__ import annotations
 
 from collections import UserList
-from dataclasses import dataclass
 from functools import cached_property, partial
 from typing import Any, Literal, NamedTuple, Optional
 
-try:
-    from pydantic.v1 import (
-        BaseModel,
-        Extra,
-        NonNegativeFloat,
-        NonNegativeInt,
-        PositiveInt,
-        confloat,
-        conint,
-        validator,
-    )
-except ImportError:
-    from pydantic import (
-        BaseModel,
-        Extra,
-        NonNegativeFloat,
-        NonNegativeInt,
-        PositiveInt,
-        confloat,
-        conint,
-        validator,
-    )
+import pydantic
+from pydantic import (
+    BaseModel,
+    Extra,
+    NonNegativeFloat,
+    NonNegativeInt,
+    PositiveInt,
+    confloat,
+    conint,
+    constr,
+    validator,
+)
 
-
-@dataclass
-class SkipImg2ImgOrig:
-    steps: int
-    sampler_name: str
-    width: int
-    height: int
+cn_model_regex = r".*(inpaint|tile|scribble|lineart|openpose).*|^None$"
+cn_module_regex = r".*(inpaint|tile|pidi|lineart|openpose).*|^None$"
 
 
 class Arg(NamedTuple):
@@ -44,18 +28,16 @@ class Arg(NamedTuple):
 
 class ArgsList(UserList):
     @cached_property
-    def attrs(self) -> tuple[str, ...]:
+    def attrs(self) -> tuple[str]:
         return tuple(attr for attr, _ in self)
 
     @cached_property
-    def names(self) -> tuple[str, ...]:
+    def names(self) -> tuple[str]:
         return tuple(name for _, name in self)
 
 
 class ADetailerArgs(BaseModel, extra=Extra.forbid):
     ad_model: str = "None"
-    ad_model_classes: str = ""
-    ad_tab_enable: bool = True
     ad_prompt: str = ""
     ad_negative_prompt: str = ""
     ad_confidence: confloat(ge=0.0, le=1.0) = 0.3
@@ -83,14 +65,13 @@ class ADetailerArgs(BaseModel, extra=Extra.forbid):
     ad_vae: Optional[str] = None
     ad_use_sampler: bool = False
     ad_sampler: str = "DPM++ 2M Karras"
-    ad_scheduler: str = "Use same scheduler"
     ad_use_noise_multiplier: bool = False
     ad_noise_multiplier: confloat(ge=0.5, le=1.5) = 1.0
     ad_use_clip_skip: bool = False
     ad_clip_skip: conint(ge=1, le=12) = 1
     ad_restore_face: bool = False
-    ad_controlnet_model: str = "None"
-    ad_controlnet_module: str = "None"
+    ad_controlnet_model: constr(regex=cn_model_regex) = "None"
+    ad_controlnet_module: constr(regex=cn_module_regex) = "None"
     ad_controlnet_weight: confloat(ge=0.0, le=1.0) = 1.0
     ad_controlnet_guidance_start: confloat(ge=0.0, le=1.0) = 0.0
     ad_controlnet_guidance_end: confloat(ge=0.0, le=1.0) = 1.0
@@ -120,16 +101,14 @@ class ADetailerArgs(BaseModel, extra=Extra.forbid):
                 p.pop(k, None)
 
     def extra_params(self, suffix: str = "") -> dict[str, Any]:
-        if self.need_skip():
+        if self.ad_model == "None":
             return {}
 
         p = {name: getattr(self, attr) for attr, name in ALL_ARGS}
         ppop = partial(self.ppop, p)
 
-        ppop("ADetailer model classes")
         ppop("ADetailer prompt")
         ppop("ADetailer negative prompt")
-        p.pop("ADetailer tab enable", None)  # always pop
         ppop("ADetailer mask only top k largest", cond=0)
         ppop("ADetailer mask min ratio", cond=0.0)
         ppop("ADetailer mask max ratio", cond=1.0)
@@ -163,13 +142,8 @@ class ADetailerArgs(BaseModel, extra=Extra.forbid):
         )
         ppop(
             "ADetailer use separate sampler",
-            [
-                "ADetailer use separate sampler",
-                "ADetailer sampler",
-                "ADetailer scheduler",
-            ],
+            ["ADetailer use separate sampler", "ADetailer sampler"],
         )
-        ppop("ADetailer scheduler", cond="Use same scheduler")
         ppop(
             "ADetailer use separate noise multiplier",
             ["ADetailer use separate noise multiplier", "ADetailer noise multiplier"],
@@ -202,17 +176,9 @@ class ADetailerArgs(BaseModel, extra=Extra.forbid):
 
         return p
 
-    def is_mediapipe(self) -> bool:
-        return self.ad_model.lower().startswith("mediapipe")
-
-    def need_skip(self) -> bool:
-        return self.ad_model == "None" or self.ad_tab_enable is False
-
 
 _all_args = [
     ("ad_model", "ADetailer model"),
-    ("ad_model_classes", "ADetailer model classes"),
-    ("ad_tab_enable", "ADetailer tab enable"),
     ("ad_prompt", "ADetailer prompt"),
     ("ad_negative_prompt", "ADetailer negative prompt"),
     ("ad_confidence", "ADetailer confidence"),
@@ -240,7 +206,6 @@ _all_args = [
     ("ad_vae", "ADetailer VAE"),
     ("ad_use_sampler", "ADetailer use separate sampler"),
     ("ad_sampler", "ADetailer sampler"),
-    ("ad_scheduler", "ADetailer scheduler"),
     ("ad_use_noise_multiplier", "ADetailer use separate noise multiplier"),
     ("ad_noise_multiplier", "ADetailer noise multiplier"),
     ("ad_use_clip_skip", "ADetailer use separate CLIP skip"),
@@ -263,16 +228,3 @@ BBOX_SORTBY = [
     "Area (large to small)",
 ]
 MASK_MERGE_INVERT = ["None", "Merge", "Merge and Invert"]
-
-_script_default = (
-    "dynamic_prompting",
-    "dynamic_thresholding",
-    "wildcard_recursive",
-    "wildcards",
-    "lora_block_weight",
-    "negpip",
-)
-SCRIPT_DEFAULT = ",".join(sorted(_script_default))
-
-_builtin_script = ("soft_inpainting", "hypertile_script")
-BUILTIN_SCRIPT = ",".join(sorted(_builtin_script))

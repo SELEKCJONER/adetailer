@@ -21,17 +21,14 @@ def mediapipe_predict(
     }
     if model_type in mapping:
         func = mapping[model_type]
-        try:
-            return func(image, confidence)
-        except Exception:
-            return PredictOutput()
+        return func(image, confidence)
     msg = f"[-] ADetailer: Invalid mediapipe model type: {model_type}, Available: {list(mapping.keys())!r}"
     raise RuntimeError(msg)
 
 
 def mediapipe_face_detection(
     model_type: int, image: Image.Image, confidence: float = 0.3
-) -> PredictOutput[float]:
+) -> PredictOutput:
     import mediapipe as mp
 
     img_width, img_height = image.size
@@ -71,9 +68,7 @@ def mediapipe_face_detection(
     return PredictOutput(bboxes=bboxes, masks=masks, preview=preview)
 
 
-def mediapipe_face_mesh(
-    image: Image.Image, confidence: float = 0.3
-) -> PredictOutput[int]:
+def mediapipe_face_mesh(image: Image.Image, confidence: float = 0.3) -> PredictOutput:
     import mediapipe as mp
 
     mp_face_mesh = mp.solutions.face_mesh
@@ -103,9 +98,7 @@ def mediapipe_face_mesh(
                 connection_drawing_spec=drawing_styles.get_default_face_mesh_tesselation_style(),
             )
 
-            points = np.array(
-                [[land.x * w, land.y * h] for land in landmarks.landmark], dtype=int
-            )
+            points = np.intp([(land.x * w, land.y * h) for land in landmarks.landmark])
             outline = cv2.convexHull(points).reshape(-1).tolist()
 
             mask = Image.new("L", image.size, "black")
@@ -120,7 +113,7 @@ def mediapipe_face_mesh(
 
 def mediapipe_face_mesh_eyes_only(
     image: Image.Image, confidence: float = 0.3
-) -> PredictOutput[int]:
+) -> PredictOutput:
     import mediapipe as mp
 
     mp_face_mesh = mp.solutions.face_mesh
@@ -143,9 +136,7 @@ def mediapipe_face_mesh_eyes_only(
         masks = []
 
         for landmarks in pred.multi_face_landmarks:
-            points = np.array(
-                [[land.x * w, land.y * h] for land in landmarks.landmark], dtype=int
-            )
+            points = np.intp([(land.x * w, land.y * h) for land in landmarks.landmark])
             left_eyes = points[left_idx]
             right_eyes = points[right_idx]
             left_outline = cv2.convexHull(left_eyes).reshape(-1).tolist()
